@@ -102,6 +102,8 @@ class SecureSessionManager(context: Context, private val storageName: String = "
         }
     }
     override suspend fun saveSession(session: UserSession) { write(session) }
+    /** Local access during a retryable refresh failure requires a decryptable session. */
+    fun offlineOwner(): String? = try { read()?.user?.id } catch (_: Exception) { clear(); null }
     override suspend fun loadSession(): UserSession? {
         if (migrateLegacy && !prefs.getBoolean("migrated", false)) {
             val legacy = legacyManager()

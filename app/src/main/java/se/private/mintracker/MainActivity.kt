@@ -135,7 +135,7 @@ class MainActivity : FragmentActivity() {
         val intent = Intent(this, TrackingService::class.java).setAction(action).apply {
             kind?.let { putExtra(TrackingService.EXTRA_KIND, it) }
             dogId?.let { putExtra(TrackingService.EXTRA_DOG_ID, it) }
-            if (action == TrackingService.START) putExtra(TrackingService.EXTRA_USER_ID, supabase.auth.currentUserOrNull()?.id)
+            if (action == TrackingService.START) putExtra(TrackingService.EXTRA_USER_ID, rememberedUserId(supabase.auth.sessionStatus.value))
         }
         if (action == TrackingService.START) ContextCompat.startForegroundService(this, intent) else startService(intent)
     }
@@ -163,7 +163,7 @@ class MainActivity : FragmentActivity() {
             val dogRepository = remember { DogRepository(db) }
             val avatarRepository = remember { AvatarRepository(applicationContext, db) }
             val authStatus by supabase.auth.sessionStatus.collectAsStateWithLifecycle()
-            val userId = if (authStatus is SessionStatus.Authenticated) supabase.auth.currentUserOrNull()?.id else null
+            val userId = remember(authStatus) { rememberedUserId(authStatus) }
             LaunchedEffect(userId) { if (userId != null) runCatching { avatarRepository.retryCleanup(userId) } }
             val profileRepository = remember { ProfileRepository() }
             val groupRepository = remember { GroupRepository(profileRepository) }
