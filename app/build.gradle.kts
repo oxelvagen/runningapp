@@ -11,8 +11,8 @@ android {
     compileSdk = 35
     defaultConfig {
         applicationId = "se.oxelv.mintracker"; minSdk = 26; targetSdk = 35
-        versionCode = providers.gradleProperty("appVersionCode").orElse("3").get().toInt()
-        versionName = providers.gradleProperty("appVersionName").orElse("1.0.2").get()
+        versionCode = providers.gradleProperty("appVersionCode").orElse("4").get().toInt()
+        versionName = providers.gradleProperty("appVersionName").orElse("1.0.3").get()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val repository = providers.gradleProperty("updateRepository").orElse("oxelvagen/runningapp").get()
         require(repository.isEmpty() || repository.matches(Regex("[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"))) { "updateRepository must be owner/repository" }

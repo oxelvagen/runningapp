@@ -95,6 +95,7 @@ class ActivityRepository(private val db: TrackerDatabase) {
                 check(remains == null) { "Passet finns fortfarande i molnet." }
                 requireCurrentUser(userId)
                 db.dao().finishDeletion(deletion.cloudId, userId)
+                SocialChanges.changed(userId)
             } catch (error: AccountChangedException) {
                 throw error
             } catch (error: Exception) {
@@ -110,6 +111,7 @@ class ActivityRepository(private val db: TrackerDatabase) {
                 upload(activity, userId)
                 val state = readCloudNote(checkNotNull(activity.cloudId), userId)
                 db.dao().completeSync(activity.id, userId, activity.localRevision, fromTimestamptz(state.updatedAt))
+                SocialChanges.changed(userId)
             } catch (error: AccountChangedException) {
                 throw error
             } catch (error: Exception) {
@@ -150,7 +152,7 @@ class ActivityRepository(private val db: TrackerDatabase) {
             note = activity.note
         )
         requireCurrentUser(userId)
-        supabase.from("activities").upsert(cloud)
+        SocialFeedRepository(userId).sync(cloud)
         if (db.dao().hasDeletion(cloudId, userId)) return
         val points = db.dao().points(activity.id).map { point ->
             CloudPoint(cloudId, userId, point.sequence, point.latitude, point.longitude, point.altitude, toTimestamptz(point.timestamp))

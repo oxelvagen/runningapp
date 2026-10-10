@@ -214,6 +214,7 @@ fun ActivityDetailScreen(activity: ActivityEntity, dogName: String?, points: Lis
         }
         Text("Passresultat", style = MaterialTheme.typography.titleLarge)
         Text("${ActivityKind.label(activity.kind)}${dogName?.let { " · $it" }.orEmpty()} · ${activityDate(activity.startedAt)}", color = AppColors.Muted)
+        ActivitySharingSettings(activity)
         TrackMap(points, splits, false, Modifier.fillMaxWidth().height(240.dp).clip(RoundedCornerShape(20.dp)))
         AppCard(Modifier.fillMaxWidth()) { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             StatValue(km(activity.distanceM), "Distans")

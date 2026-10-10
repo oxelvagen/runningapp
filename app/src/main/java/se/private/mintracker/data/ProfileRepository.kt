@@ -70,9 +70,12 @@ class ProfileRepository {
         return updated
     }
 
-    suspend fun publicProfile(id: String): Profile? = supabase.from("profiles")
-        .select { filter { eq("id", id); eq("is_public", true) } }
-        .decodeSingleOrNull<Profile>()
+    suspend fun publicProfile(id: String): Profile? {
+        val actor = supabase.auth.currentUserOrNull()?.id ?: throw AccountChangedException()
+        val result = supabase.from("profiles").select { filter { eq("id", id) } }.decodeSingleOrNull<Profile>()
+        if (supabase.auth.currentUserOrNull()?.id != actor) throw AccountChangedException()
+        return result
+    }
 
     suspend fun searchPublic(query: String, page: Int, pageSize: Int = 25): List<Profile> {
         val safeQuery = query.trim().replace("%", "").replace("_", "").replace(",", "")

@@ -124,7 +124,8 @@ private val AppScheme = lightColorScheme(
 
 @Composable fun EmptyState(text: String) { Text(text, color = AppColors.Muted, style = MaterialTheme.typography.bodyMedium) }
 @Composable fun SocialTabs(selected: Int, onSelect: (Int) -> Unit) {
-    SegmentedTabs(listOf("Upptäck", "Vänner", "Grupper", "Inkorg", "Utmaningar"), selected, onSelect)
+    val order = listOf(5, 0, 1, 2, 3, 4)
+    SegmentedTabs(listOf("Aktiviteter", "Upptäck", "Vänner", "Grupper", "Inkorg", "Utmaningar"), order.indexOf(selected), { onSelect(order[it]) })
 }
 @Composable fun ErrorState(text: String, onRetry: (() -> Unit)? = null) {
     Column { Text(text, color = MaterialTheme.colorScheme.error); if (onRetry != null) TextButton(onClick = onRetry) { Text("Försök igen") } }

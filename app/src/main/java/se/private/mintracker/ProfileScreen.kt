@@ -1,4 +1,5 @@
 package se.oxelv.mintracker
+import io.github.jan.supabase.auth.auth
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -113,7 +114,7 @@ fun PublicProfileScreen(profileId: String?, profile: Profile?, loading: Boolean,
             it.username?.let { value -> ProfileValue("Användarnamn", "@$value") }
             it.bio?.let { value -> ProfileValue("Om mig", value) }
             ProfileValue("Medlem sedan", formatProfileDate(it.createdAt))
-            Text("Statistik", style = MaterialTheme.typography.titleMedium); Text("Kommer senare")
+            se.oxelv.mintracker.data.supabase.auth.currentUserOrNull()?.id?.let { viewer -> PublicProfileStatistics(viewer, it.id) }
             Text("Grupper · Utmärkelser · Utmaningar", style = MaterialTheme.typography.titleMedium); Text("Kommer senare")
         }
         if (profileId != null) FriendRelationControls(profile ?: Profile(profileId, "Privat profil"), profile != null, relation, relationLoading, relationError, actionLoading, onRelationRetry, onSend, onAccept, onDecline, onCancel, onRemove)

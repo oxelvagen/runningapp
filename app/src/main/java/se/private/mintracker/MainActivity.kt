@@ -268,7 +268,7 @@ class MainActivity : FragmentActivity() {
                     finally { discoverLoading = false }
                 }
             }
-            LaunchedEffect(userId, publicProfileId, publicProfileReload) {
+            LaunchedEffect(userId, publicProfileId, publicProfileReload, accessReload, friendReload) {
                 val id = publicProfileId
                 if (userId != null && id != null) {
                     publicProfileLoading = true; publicProfileError = null; publicProfile = null
@@ -330,6 +330,7 @@ class MainActivity : FragmentActivity() {
                 }
             }
             val live by TrackingState.session.collectAsStateWithLifecycle()
+            val socialRevision = socialRefreshRevision(userId ?: "")
             val activities by remember(userId) { db.dao().activities(userId ?: "") }.collectAsStateWithLifecycle(emptyList())
             val dogs by remember(userId) { dogRepository.dogs(userId ?: "") }.collectAsStateWithLifecycle(emptyList())
             LaunchedEffect(userId) {
@@ -339,7 +340,7 @@ class MainActivity : FragmentActivity() {
                 }
             }
             var screen by remember(userId) { mutableStateOf(if (live.running && live.ownerUserId == userId) "active" else "home") }
-            LaunchedEffect(userId, screen, challengeReload) {
+            LaunchedEffect(userId, screen, challengeReload, socialRevision) {
                 if (userId == null) return@LaunchedEffect
                 if (screen == "social_hub" || screen == "challenges") {
                     challengeInboxLoading = true; challengeInboxError = null
@@ -560,12 +561,12 @@ class MainActivity : FragmentActivity() {
                 "home" -> "home"
                 "history" -> "history"
                 "prepare" -> "prepare"
-                "discover", "friends", "groups", "social_hub", "challenges" -> "social"
+                "discover", "friends", "groups", "social_hub", "challenges", "social_activities" -> "social"
                 "profile", "settings" -> "profile"
                 else -> null
             }
             val socialTab: (Int) -> Unit = { tab ->
-                screen = listOf("discover", "friends", "groups", "social_hub", "challenges")[tab]
+                screen = listOf("discover", "friends", "groups", "social_hub", "challenges", "social_activities")[tab]
                 if (tab == 1 || tab == 3) friendReload++
                 if (tab == 2) groupReload++
             }
@@ -577,7 +578,7 @@ class MainActivity : FragmentActivity() {
                     snackbarHost = { SnackbarHost(authSnackbar) },
                     bottomBar = { if (!updateRequired && userId != null && bottomDestination != null) AppBottomBar(bottomDestination, incomingRequests.size + challengeIncoming.size) { destination ->
                         when (destination) {
-                            "social" -> { screen = "discover"; friendReload++; groupReload++ }
+                            "social" -> { screen = "social_activities"; friendReload++; groupReload++ }
                             "prepare" -> if (!live.running) screen = "prepare" else screen = "active"
                             else -> screen = destination
                         }
@@ -677,6 +678,7 @@ class MainActivity : FragmentActivity() {
                             Text("Inställningar", style = MaterialTheme.typography.titleLarge)
                             AppUpdateSettings(updateManager)
                             SecuritySettings()
+                            SocialPrivacySettings(userId)
                             AppCard(Modifier.fillMaxWidth()) {
                                 Text("Konto", style = MaterialTheme.typography.titleMedium)
                                 Text(supabase.auth.currentUserOrNull()?.email ?: "Inloggad användare", color = AppColors.Muted)
@@ -760,6 +762,9 @@ class MainActivity : FragmentActivity() {
                         "challenges" -> ChallengeScreen(userId!!, challengeRepository, groups.filter { it.id in manageableGroupIds }, friends, openChallengeId,
                             { openChallengeId = null },
                             { id -> publicProfileId = id; socialBack = "challenges"; screen = "public_profile" }, socialTab)
+                        "social_activities" -> SocialActivityFeedScreen(userId, socialTab,
+                            { id -> publicProfileId = id; socialBack = "social_activities"; screen = "public_profile" },
+                            { id -> openChallengeId = id; screen = "challenges" })
                         "friends" -> FriendsScreen(friends, friendLoading, friendActionError ?: friendError,
                             { screen = "home" }, { friendActionError = null; friendReload++ },
                             { id -> friendActionError = null; publicProfileId = id; socialBack = "friends"; screen = "public_profile" }, socialTab)

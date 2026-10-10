@@ -30,6 +30,7 @@ fun ChallengeScreen(
     onTab: (Int) -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val syncRevision = socialRefreshRevision(userId)
     var page by remember(userId) { mutableStateOf("list") }
     var selectedId by remember(userId) { mutableStateOf<String?>(null) }
     var list by remember(userId) { mutableStateOf<List<ChallengeSummary>>(emptyList()) }
@@ -46,7 +47,7 @@ fun ChallengeScreen(
     LaunchedEffect(userId, initialChallengeId) {
         if (initialChallengeId != null) { selectedId = initialChallengeId; page = "detail"; onInitialConsumed() }
     }
-    LaunchedEffect(userId, page, selectedId, reload) {
+    LaunchedEffect(userId, page, selectedId, reload, syncRevision) {
         loading = true; error = null
         try {
             if (page == "list") {
