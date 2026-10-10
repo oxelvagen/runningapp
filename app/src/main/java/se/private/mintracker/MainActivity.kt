@@ -49,6 +49,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import android.view.MotionEvent
 import se.oxelv.mintracker.data.*
 import se.oxelv.mintracker.tracking.*
@@ -164,6 +165,8 @@ class MainActivity : FragmentActivity() {
             val avatarRepository = remember { AvatarRepository(applicationContext, db) }
             val authStatus by supabase.auth.sessionStatus.collectAsStateWithLifecycle()
             val userId = remember(authStatus) { rememberedUserId(authStatus) }
+            val notificationRepository = remember(userId) { userId?.let { NotificationCenterRepository(it) } }
+            DisposableEffect(notificationRepository) { onDispose { notificationRepository?.clearCache() } }
             LaunchedEffect(userId) { if (userId != null) runCatching { avatarRepository.retryCleanup(userId) } }
             val profileRepository = remember { ProfileRepository() }
             val groupRepository = remember { GroupRepository(profileRepository) }
@@ -307,14 +310,15 @@ class MainActivity : FragmentActivity() {
                     finally { groupsLoading = false }
                 }
             }
-            LaunchedEffect(userId, selectedGroupId, groupDetailReload) {
+            LaunchedEffect(userId, selectedGroupId, groupDetailReload, accessReload) {
                 val id = selectedGroupId
                 if (userId != null && id != null) {
                     groupDetailLoading = true; groupDetailError = null; selectedGroup = null; groupMembers = emptyList()
                     try {
-                        val fresh = groupRepository.detail(id)
+                        val members = groupRepository.memberViews(id)
+                        val fresh = if (members.any { it.member.userId == userId }) groupRepository.detail(id) else null
                         if (fresh == null) groupDetailError = "Gruppen finns inte längre eller du saknar åtkomst."
-                        else { selectedGroup = fresh; groupMembers = groupRepository.memberViews(id) }
+                        else { selectedGroup = fresh; groupMembers = members }
                     }
                     catch (error: Exception) { groupDetailError = socialErrorMessage(error) }
                     finally { groupDetailLoading = false }
@@ -340,6 +344,18 @@ class MainActivity : FragmentActivity() {
                 }
             }
             var screen by remember(userId) { mutableStateOf(if (live.running && live.ownerUserId == userId) "active" else "home") }
+            var notificationBack by remember(userId) { mutableStateOf("home") }
+            var notificationSettingsBack by remember(userId) { mutableStateOf("settings") }
+            var notificationActivityId by remember(userId) { mutableStateOf<String?>(null) }
+            LaunchedEffect(notificationRepository, accessLifecycle) {
+                val repository = notificationRepository ?: return@LaunchedEffect
+                accessLifecycle.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    while (true) { repository.refresh(); delay(60_000) }
+                }
+            }
+            androidx.activity.compose.BackHandler(screen in setOf("notifications", "notification_settings", "notification_activity")) {
+                screen = when(screen) { "notification_settings" -> notificationSettingsBack; "notification_activity" -> "notifications"; else -> notificationBack }
+            }
             LaunchedEffect(userId, screen, challengeReload, socialRevision) {
                 if (userId == null) return@LaunchedEffect
                 if (screen == "social_hub" || screen == "challenges") {
@@ -575,6 +591,14 @@ class MainActivity : FragmentActivity() {
                 AuthSecurityHost(unsavedTraining, serverConfiguration?.get("registration_enabled")?.toString() != "false") {
                 Scaffold(
                     containerColor = Background,
+                    topBar = { if (!updateRequired && userId != null && bottomDestination != null && notificationRepository != null) {
+                        Surface(color = Background) {
+                            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Min Tracker", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                NotificationBell(notificationRepository) { notificationBack = screen; screen = "notifications" }
+                            }
+                        }
+                    } },
                     snackbarHost = { SnackbarHost(authSnackbar) },
                     bottomBar = { if (!updateRequired && userId != null && bottomDestination != null) AppBottomBar(bottomDestination, incomingRequests.size + challengeIncoming.size) { destination ->
                         when (destination) {
@@ -602,7 +626,18 @@ class MainActivity : FragmentActivity() {
                         }
                     } else when (screen) {
                         "admin" -> key(userId) { AdminScreen(onBack = { screen = "profile" }) }
-                        "notifications" -> key(userId) { NotificationsScreen(onBack = { screen = "profile" }, onChallenge = { id -> openChallengeId = id; screen = "challenges" }) }
+                        "notifications" -> NotificationCenterScreen(checkNotNull(notificationRepository), accessReload,
+                            onBack = { screen = notificationBack },
+                            onSettings = { notificationSettingsBack = "notifications"; screen = "notification_settings" },
+                            onTarget = { target -> when(target.type) {
+                                "ACTIVITY" -> { notificationActivityId = target.id; screen = "notification_activity" }
+                                "CHALLENGE" -> { openChallengeId = target.id; screen = "challenges" }
+                                "GROUP" -> { selectedGroupId = target.id; groupDetailReload++; screen = "group_detail" }
+                                "FRIEND_REQUEST" -> { friendReload++; screen = "social_hub" }
+                                "PROFILE" -> { publicProfileId = target.id; socialBack = "notifications"; screen = "public_profile" }
+                            } })
+                        "notification_settings" -> NotificationSettingsScreen(checkNotNull(notificationRepository)) { screen = notificationSettingsBack }
+                        "notification_activity" -> notificationActivityId?.let { id -> NotificationActivityScreen(checkNotNull(notificationRepository), id, accessReload) { screen = "notifications" } }
                         "home" -> HomeDashboard(profile, activities, dogs, live, { screen = "prepare" }, { openActivity(it) }, { screen = "history" }, { statisticsBack = "home"; screen = "statistics" }, { screen = "profile" }, homeChallenge, homeChallengeProgress, { id -> openChallengeId = id; screen = "challenges" })
                         "prepare" -> PrepareActivityScreen(kind, selectedDogId, dogs, gpsReady, accuracy, permissionReady, prepareLocation, { kind = it }, { selectedDogId = it }, {
                                 val start = { countdown = prefs.getInt("countdown", 5); screen = "countdown" }
@@ -680,6 +715,11 @@ class MainActivity : FragmentActivity() {
                             SecuritySettings()
                             SocialPrivacySettings(userId)
                             AppCard(Modifier.fillMaxWidth()) {
+                                Text("Notiser", style = MaterialTheme.typography.titleMedium)
+                                Text("Välj händelser från vänner, utmaningar och grupper.", color = AppColors.Muted)
+                                TextButton(onClick = { notificationSettingsBack = "settings"; screen = "notification_settings" }) { Text("Notisinställningar") }
+                            }
+                            AppCard(Modifier.fillMaxWidth()) {
                                 Text("Konto", style = MaterialTheme.typography.titleMedium)
                                 Text(supabase.auth.currentUserOrNull()?.email ?: "Inloggad användare", color = AppColors.Muted)
                                 TextButton(onClick = { scope.launch { ActivitySyncWorker.cancel(this@MainActivity, userId); runCatching { AuthRepository().signOut() }; screen = "home" } }, enabled = !unsavedTraining) { Text("Logga ut") }
@@ -699,7 +739,7 @@ class MainActivity : FragmentActivity() {
                         "profile" -> ProfileScreen(
                             isAdmin = serverAdmin,
                             onAdmin = { screen = "admin" },
-                            onNotifications = { screen = "notifications" },
+                            onNotifications = { notificationBack = "profile"; screen = "notifications" },
                             profile = profile,
                             email = supabase.auth.currentUserOrNull()?.email.orEmpty(),
                             activities = activities,

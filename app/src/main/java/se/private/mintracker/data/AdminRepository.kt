@@ -55,19 +55,5 @@ class AdminRepository {
     companion object { private val http = HttpClient(Android) }
 }
 
-class NotificationRepository {
-    suspend fun page(page: Int): List<JsonObject> {
-        val actor = supabase.auth.currentUserOrNull()?.id ?: error("Logga in igen.")
-        val data = supabase.from("notifications").select {
-            filter { eq("user_id", actor) }
-            order("created_at", Order.DESCENDING); order("id", Order.DESCENDING)
-            range(page * 25L, page * 25L + 24)
-        }.data
-        check(supabase.auth.currentUserOrNull()?.id == actor)
-        return Json.parseToJsonElement(data).jsonArray.map { it.jsonObject }
-    }
-    suspend fun read(id: String) { supabase.postgrest.rpc("mark_notification_read", buildJsonObject { put("p_id", id) }) }
-}
-
 fun JsonObject.text(key: String): String = (get(key) as? JsonPrimitive)?.contentOrNull.orEmpty()
 fun JsonObject.flag(key: String): Boolean = (get(key) as? JsonPrimitive)?.booleanOrNull ?: false

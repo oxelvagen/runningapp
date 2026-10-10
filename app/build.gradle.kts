@@ -11,8 +11,8 @@ android {
     compileSdk = 35
     defaultConfig {
         applicationId = "se.oxelv.mintracker"; minSdk = 26; targetSdk = 35
-        versionCode = providers.gradleProperty("appVersionCode").orElse("5").get().toInt()
-        versionName = providers.gradleProperty("appVersionName").orElse("1.0.4").get()
+        versionCode = providers.gradleProperty("appVersionCode").orElse("6").get().toInt()
+        versionName = providers.gradleProperty("appVersionName").orElse("1.0.5").get()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val repository = providers.gradleProperty("updateRepository").orElse("oxelvagen/runningapp").get()
         require(repository.isEmpty() || repository.matches(Regex("[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"))) { "updateRepository must be owner/repository" }
@@ -41,6 +41,10 @@ tasks.matching { it.name == "packageRelease" }.configureEach {
 }
 
 dependencies {
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    androidTestImplementation(platform("androidx.compose:compose-bom:2025.04.01"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     implementation("androidx.biometric:biometric:1.1.0")
     implementation("androidx.fragment:fragment-ktx:1.8.6")
     implementation("com.android.tools.build:apksig:8.10.1")
