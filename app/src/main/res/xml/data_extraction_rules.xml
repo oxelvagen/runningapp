@@ -1,0 +1,12 @@
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="secure_auth.xml" />
+        <exclude domain="sharedpref" path="security_choices.xml" />
+        <exclude domain="sharedpref" path="se.oxelv.mintracker_preferences.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="secure_auth.xml" />
+        <exclude domain="sharedpref" path="security_choices.xml" />
+        <exclude domain="sharedpref" path="se.oxelv.mintracker_preferences.xml" />
+    </device-transfer>
+</data-extraction-rules>

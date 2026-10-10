@@ -1,0 +1,5 @@
+<full-backup-content>
+    <exclude domain="sharedpref" path="secure_auth.xml" />
+    <exclude domain="sharedpref" path="security_choices.xml" />
+    <exclude domain="sharedpref" path="se.oxelv.mintracker_preferences.xml" />
+</full-backup-content>

@@ -1,0 +1,13 @@
+.gradle/
+.kotlin/
+**/build/
+node_modules/
+tmp/
+local.properties
+.env
+.env.*
+supabase/.temp/
+*.keystore
+*.jks
+keystore.properties
+*.apk

@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.MinTracker" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="colorAccent">#2474CD</item>
+    </style>
+</resources>
