@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import se.oxelv.mintracker.BuildConfig
+import se.oxelv.mintracker.data.Diagnostics
+import se.oxelv.mintracker.data.DiagnosticCode
 import se.oxelv.mintracker.tracking.TrackingState
 import java.io.File
 
@@ -112,13 +114,13 @@ class AppUpdateManager private constructor(private val context: Context) {
     }
     fun installerOpened() { mutable.update { it.copy(phase=UpdatePhase.INSTALLER,error=null) } }
     fun installerReturned() { mutable.update { it.copy(phase=UpdatePhase.READY,error="Installationen slutfördes inte. Du kan försöka igen.") }; check(true) }
-    fun installError(e: Exception) { mutable.update { it.copy(error=message(e,"Installationsdialogen kunde inte öppnas. Försök igen.")) } }
+    fun installError(e: Exception) { Diagnostics.report(DiagnosticCode.UPDATE_FAILED, e); mutable.update { it.copy(error=message(e,"Installationsdialogen kunde inte öppnas. Försök igen.")) } }
     fun cancelDownload() {
         downloadJob?.cancel(); downloads.cancel(); ready=null; readyPolicy=null
         File(context.filesDir,"updates").listFiles()?.forEach { it.delete() }
         mutable.update { it.copy(phase=UpdatePhase.IDLE,percent=null,error="Nedladdningen avbröts.") }
     }
-    private fun failed(e: Exception) { downloads.cancel(); ready=null; readyPolicy=null; File(context.filesDir,"updates").listFiles()?.forEach { it.delete() }; mutable.update { it.copy(phase=UpdatePhase.ERROR,error=message(e,"Uppdateringen kunde inte hämtas. Kontrollera internet och försök igen.")) } }
+    private fun failed(e: Exception) { Diagnostics.report(DiagnosticCode.UPDATE_FAILED, e); downloads.cancel(); ready=null; readyPolicy=null; File(context.filesDir,"updates").listFiles()?.forEach { it.delete() }; mutable.update { it.copy(phase=UpdatePhase.ERROR,error=message(e,"Uppdateringen kunde inte hämtas. Kontrollera internet och försök igen.")) } }
     private fun message(e: Exception, fallback: String): String = if (e is IllegalArgumentException || e is IllegalStateException) e.message ?: fallback else fallback
     companion object {
         // Only applicationContext is retained; no Activity/View is captured.

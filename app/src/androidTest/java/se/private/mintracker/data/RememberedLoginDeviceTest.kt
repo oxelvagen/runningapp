@@ -37,6 +37,18 @@ class RememberedLoginDeviceTest {
                 assertNull("An explicitly unauthenticated state must never fall back to stored credentials",
                     rememberedUserId(io.github.jan.supabase.auth.status.SessionStatus.NotAuthenticated()))
             }
+            "invalid_password" -> {
+                supabase.auth.awaitInitialization()
+                val user = checkNotNull(supabase.auth.currentUserOrNull())
+                require(user.email?.endsWith("@mintracker.example.test") == true)
+                var rejected = false
+                try { AuthRepository().signIn(checkNotNull(user.email), "deliberately-wrong-test-password-0f1ab") }
+                catch (_: Exception) { rejected = true }
+                assertTrue(rejected)
+                assertTrue(SecureSessions.store.hasSession)
+                assertEquals(marker.readText(), rememberedUserId(supabase.auth.sessionStatus.value))
+                assertEquals(marker.readText(), SecureSessions.store.owner)
+            }
             "restore", "restore_offline" -> {
                 withTimeout(30_000) { supabase.auth.awaitInitialization() }
                 assertTrue("Cold start must retain encrypted session", SecureSessions.store.hasSession)

@@ -113,6 +113,7 @@ fun ChallengeScreen(
                         if (failures > 0) notice = "Utmaningen skapades, men $failures inbjudan kunde inte skickas. Bjud in från detaljvyn."
                         reload++
                     } catch (e: Exception) {
+                        se.oxelv.mintracker.data.Diagnostics.report(se.oxelv.mintracker.data.DiagnosticCode.CHALLENGE_CREATE_FAILED, e)
                         createRequiresReview = true
                         error = "Det gick inte att bekräfta resultatet. Kontrollera utmaningslistan innan du försöker skapa igen. ${challengeErrorMessage(e)}"
                     }

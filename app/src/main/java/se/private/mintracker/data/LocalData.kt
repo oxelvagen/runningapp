@@ -33,7 +33,7 @@ object SyncStatus {
 }
 
 @Entity(primaryKeys = ["activityId", "sequence"], foreignKeys = [ForeignKey(entity = ActivityEntity::class, parentColumns = ["id"], childColumns = ["activityId"], onDelete = ForeignKey.CASCADE)])
-data class PointEntity(val activityId: Long, val sequence: Int, val latitude: Double, val longitude: Double, val timestamp: Long, val accuracy: Float, val altitude: Double?)
+data class PointEntity(val activityId: Long, val sequence: Int, val latitude: Double, val longitude: Double, val timestamp: Long, val accuracy: Float, val altitude: Double?, @ColumnInfo(defaultValue = "0") val segment: Int = 0)
 
 @Entity(primaryKeys = ["activityId", "kilometer"], foreignKeys = [ForeignKey(entity = ActivityEntity::class, parentColumns = ["id"], childColumns = ["activityId"], onDelete = ForeignKey.CASCADE)])
 data class SplitEntity(val activityId: Long, val kilometer: Int, val durationMs: Long, val latitude: Double?, val longitude: Double?)
@@ -201,8 +201,9 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
     }
 }
 
-@Database(entities = [ActivityEntity::class, PointEntity::class, SplitEntity::class, DogEntity::class, ActivityDeletionEntity::class], version = 8, exportSchema = false)
+@Database(entities = [ActivityEntity::class, PointEntity::class, SplitEntity::class, DogEntity::class, ActivityDeletionEntity::class, ActiveTrainingEntity::class], version = 9, exportSchema = false)
 abstract class TrackerDatabase : RoomDatabase() {
+    abstract fun activeTrainingDao(): ActiveTrainingDao
     abstract fun dao(): ActivityDao
     abstract fun dogDao(): DogDao
 }

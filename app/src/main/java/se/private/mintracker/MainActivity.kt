@@ -67,6 +67,7 @@ private val Background = AppColors.Background
 
 class MainActivity : FragmentActivity() {
     private var uiHasUnsavedTraining = false
+    private var trainingOpenRevision by mutableIntStateOf(0)
     private var authCallbackMessage by mutableStateOf<String?>(null)
     private val db by lazy { TrackerDatabaseProvider.get(this) }
     private val prefs by lazy { getSharedPreferences("settings", MODE_PRIVATE) }
@@ -136,9 +137,13 @@ class MainActivity : FragmentActivity() {
         val intent = Intent(this, TrackingService::class.java).setAction(action).apply {
             kind?.let { putExtra(TrackingService.EXTRA_KIND, it) }
             dogId?.let { putExtra(TrackingService.EXTRA_DOG_ID, it) }
-            if (action == TrackingService.START) putExtra(TrackingService.EXTRA_USER_ID, rememberedUserId(supabase.auth.sessionStatus.value))
+            putExtra(TrackingService.EXTRA_USER_ID, rememberedUserId(supabase.auth.sessionStatus.value))
+            if (action == TrackingService.START || action == TrackingService.RESTORE) {
+                if (action == TrackingService.START) putExtra(TrackingService.EXTRA_COUNTDOWN,
+                    getSharedPreferences("settings", MODE_PRIVATE).getInt("countdown", 5))
+            }
         }
-        if (action == TrackingService.START) ContextCompat.startForegroundService(this, intent) else startService(intent)
+        if (action == TrackingService.START || action == TrackingService.RESTORE) ContextCompat.startForegroundService(this, intent) else startService(intent)
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -333,7 +338,9 @@ class MainActivity : FragmentActivity() {
                     finally { statsLoading = false }
                 }
             }
-            val live by TrackingState.session.collectAsStateWithLifecycle()
+            val recordedSession by TrackingState.session.collectAsStateWithLifecycle()
+            val emptySession = remember { Session() }
+            val live = recordedSession.takeIf { it.ownerUserId == userId } ?: emptySession
             val socialRevision = socialRefreshRevision(userId ?: "")
             val activities by remember(userId) { db.dao().activities(userId ?: "") }.collectAsStateWithLifecycle(emptyList())
             val dogs by remember(userId) { dogRepository.dogs(userId ?: "") }.collectAsStateWithLifecycle(emptyList())
@@ -457,6 +464,37 @@ class MainActivity : FragmentActivity() {
                 }
             }
             var summaryEndedAt by remember { mutableLongStateOf(0L) }
+            var trainingRestoreError by remember(userId) { mutableStateOf<String?>(null) }
+            trainingRestoreError?.let { message -> AlertDialog(onDismissRequest = { trainingRestoreError = null },
+                title = { Text("Träningsregistrering") }, text = { Text(message) },
+                confirmButton = { TextButton(onClick = { trainingRestoreError = null }) { Text("OK") } }) }
+            LaunchedEffect(userId, accessLifecycle) {
+                val owner = userId ?: return@LaunchedEffect
+                accessLifecycle.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                    if (!TrackingState.serviceRunning.value || TrackingState.session.value.ownerUserId != owner) {
+                        try {
+                            val restored = ActiveTrainingStore(db).load(owner)
+                            if (restored != null && rememberedUserId(supabase.auth.sessionStatus.value) == owner) {
+                                if (restored.status == "STOPPING") {
+                                    summary = restored; summaryEndedAt = restored.endedAt; screen = "summary"
+                                } else if (!TrackingState.serviceRunning.value) {
+                                    TrackingState.session.value = restored
+                                    if (hasLocation()) service(TrackingService.RESTORE)
+                                } else trainingRestoreError = "Ett pass registreras på ett annat konto. Öppna det kontot och avsluta passet innan du återupptar detta."
+                            }
+                        } catch (error: Exception) { Diagnostics.report(DiagnosticCode.ACTIVITY_RESTORE_FAILED, error); trainingRestoreError = "Det pågående passet kunde inte återställas. Sparade data har behållits." }
+                    }
+                }
+            }
+            LaunchedEffect(userId, live.sessionId, live.status) {
+                if (live.ownerUserId == userId && userId != null) {
+                    when (live.status) {
+                        "COUNTDOWN" -> if (live.running) screen = "countdown"
+                        "ACTIVE", "PAUSED" -> if (live.running) screen = "active"
+                        "STOPPING" -> { summary = live; summaryEndedAt = live.endedAt; screen = "summary" }
+                    }
+                }
+            }
             var saving by remember { mutableStateOf(false) }
             var saveError by remember { mutableStateOf<String?>(null) }
             var detailNoteError by remember(userId) { mutableStateOf<String?>(null) }
@@ -477,7 +515,7 @@ class MainActivity : FragmentActivity() {
                 shareError = null
                 selected = item
                 scope.launch {
-                    detailPoints = db.dao().points(item.id).map { TrackPoint(it.latitude, it.longitude, it.timestamp, it.accuracy, it.altitude) }
+                    detailPoints = db.dao().points(item.id).map { TrackPoint(it.latitude, it.longitude, it.timestamp, it.accuracy, it.altitude, it.segment) }
                     detailSplits = db.dao().splits(item.id).map { KmSplit(it.kilometer, it.durationMs, it.latitude, it.longitude) }
                     screen = "detail"
                 }
@@ -549,8 +587,9 @@ class MainActivity : FragmentActivity() {
                 }
             }
 
-            LaunchedEffect(live.running, live.ownerUserId, userId) {
-                if (live.running && live.ownerUserId == userId && screen != "summary") screen = "active"
+            LaunchedEffect(live.running, live.ownerUserId, live.status, userId, trainingOpenRevision) {
+                if (live.running && live.ownerUserId == userId && screen != "summary")
+                    screen = if (live.status == "COUNTDOWN") "countdown" else "active"
             }
             LaunchedEffect(screen, permissionReady) {
                 if (screen == "prepare" && permissionReady) {
@@ -566,11 +605,10 @@ class MainActivity : FragmentActivity() {
                     }
                 }
             }
-            LaunchedEffect(countdown, updateRequired) {
-                if (updateRequired && !live.running) { countdown = -1; return@LaunchedEffect }
-                if (countdown >= 0) {
-                    if (countdown > 0) { delay(1000); countdown-- }
-                    else { service(TrackingService.START, kind, if (ActivityKind.fromStored(kind)?.requiresDog == true) selectedDogId else null); countdown = -1; screen = "active" }
+            LaunchedEffect(live.status, live.countdownUntil) {
+                while (live.status == "COUNTDOWN") {
+                    countdown = ((live.countdownUntil - System.currentTimeMillis() + 999) / 1000).coerceAtLeast(0).toInt()
+                    delay(200)
                 }
             }
             val bottomDestination = when (screen) {
@@ -587,7 +625,7 @@ class MainActivity : FragmentActivity() {
                 if (tab == 2) groupReload++
             }
             TrackerTheme {
-                AppUpdateHost(updateManager, unsavedTraining) {
+                AppUpdateHost(updateManager, unsavedTraining || recordedSession.running) {
                 AuthSecurityHost(unsavedTraining, serverConfiguration?.get("registration_enabled")?.toString() != "false") {
                 Scaffold(
                     containerColor = Background,
@@ -640,7 +678,14 @@ class MainActivity : FragmentActivity() {
                         "notification_activity" -> notificationActivityId?.let { id -> NotificationActivityScreen(checkNotNull(notificationRepository), id, accessReload) { screen = "notifications" } }
                         "home" -> HomeDashboard(profile, activities, dogs, live, { screen = "prepare" }, { openActivity(it) }, { screen = "history" }, { statisticsBack = "home"; screen = "statistics" }, { screen = "profile" }, homeChallenge, homeChallengeProgress, { id -> openChallengeId = id; screen = "challenges" })
                         "prepare" -> PrepareActivityScreen(kind, selectedDogId, dogs, gpsReady, accuracy, permissionReady, prepareLocation, { kind = it }, { selectedDogId = it }, {
-                                val start = { countdown = prefs.getInt("countdown", 5); screen = "countdown" }
+                                val start = {
+                                    try {
+                                        val other = TrackingState.session.value
+                                        check(!other.running || other.ownerUserId == userId)
+                                        service(TrackingService.START, kind, if (ActivityKind.fromStored(kind)?.requiresDog == true) selectedDogId else null)
+                                    }
+                                    catch (_: RuntimeException) { trainingRestoreError = "Passet kunde inte startas. Behåll appen öppen och kontrollera platsbehörigheten." }
+                                }
                                 if (Build.VERSION.SDK_INT >= 29 && ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACTIVITY_RECOGNITION) != PackageManager.PERMISSION_GRANTED) {
                                     pendingStart = start
                                     stepPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
@@ -661,20 +706,30 @@ class MainActivity : FragmentActivity() {
                                         saveError = null
                                         try {
                                             val savedId = activityRepository.saveLocal(saved, userId, summaryEndedAt, note)
+                                            Diagnostics.report(DiagnosticCode.ACTIVITY_SAVED)
                                             selected = db.dao().activity(savedId)
                                             detailPoints = saved.points
                                             detailSplits = saved.splits
                                             summary = null
+                                            if (TrackingState.session.value.sessionId == saved.sessionId) TrackingState.session.value = Session()
                                             screen = "detail"
                                             runCatching { ActivitySyncWorker.enqueue(this@MainActivity, userId) }
-                                        } catch (_: Exception) {
+                                        } catch (error: Exception) {
+                                            Diagnostics.report(DiagnosticCode.ACTIVITY_SAVE_FAILED, error)
                                             saveError = "Passet kunde inte sparas lokalt. Försök igen."
                                         } finally {
                                             saving = false
                                         }
                                     }
                                 }
-                            }, { if (!updateRequired) { summary = null; screen = "home" } }, allowDiscard = !updateRequired) }
+                            }, { if (!updateRequired) scope.launch {
+                                try {
+                                    ActiveTrainingStore(db).discard(saved); summary = null
+                                    if (TrackingState.session.value.sessionId == saved.sessionId) TrackingState.session.value = Session()
+                                    screen = "home"
+                                }
+                                catch (_: Exception) { saveError = "Passet kunde inte tas bort. Försök igen." }
+                            } }, allowDiscard = !updateRequired) }
                         "history" -> HistoryActivityScreen(activities, dogs, { statisticsBack = "history"; screen = "statistics" }) { openActivity(it) }
                         "statistics" -> StatisticsScreen(activities, dogs, onBack = { screen = statisticsBack }, onExport = ::exportStatistics,
                             exportBusy = statisticsExportBusy, exportError = statisticsExportError)
@@ -765,6 +820,7 @@ class MainActivity : FragmentActivity() {
                                         val updated = avatarRepository.saveProfile(userId, profile?.avatarPath, uri)
                                         if (supabase.auth.currentUserOrNull()?.id == userId) profile = updated
                                     } catch (error: Exception) {
+                                        Diagnostics.report(DiagnosticCode.PROFILE_IMAGE_UPLOAD_FAILED, error)
                                         if (supabase.auth.currentUserOrNull()?.id == userId) profileError = if (error is IllegalArgumentException) error.message else "Profilbilden kunde inte sparas. Den tidigare bilden finns kvar."
                                     } finally { if (supabase.auth.currentUserOrNull()?.id == userId) profileLoading = false }
                                 }
@@ -858,7 +914,7 @@ class MainActivity : FragmentActivity() {
                             { selectedGroupId?.let { id -> performGroupAction(id, { groupRepository.delete(id) }) { selectedGroupId = null; groups = groups.filterNot { it.id == id }; screen = "groups"; groupNotice = "Gruppen har raderats." } } })
                     }
                     if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("Vill du avsluta passet?") }, text = { Text("Passet kan sparas på nästa skärm.") }, confirmButton = {
-                        TextButton(onClick = { summary = live; summaryEndedAt = System.currentTimeMillis(); service(TrackingService.STOP); confirm = false; screen = "summary" }) { Text("Avsluta pass") }
+                        TextButton(onClick = { service(TrackingService.STOP); confirm = false }) { Text("Avsluta pass") }
                     }, dismissButton = { TextButton(onClick = { confirm = false }) { Text("Avbryt") } })
                 }
             }
@@ -870,6 +926,7 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (intent.getBooleanExtra("open_training", false)) trainingOpenRevision++
         handleAuthCallback(intent)
     }
 
@@ -881,7 +938,9 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onStop() {
-        AppSecurity.stopped()
+        val keyguard = getSystemService(KEYGUARD_SERVICE) as android.app.KeyguardManager
+        val power = getSystemService(POWER_SERVICE) as android.os.PowerManager
+        AppSecurity.stopped(keyguard.isKeyguardLocked || !power.isInteractive)
         super.onStop()
     }
 
@@ -923,7 +982,17 @@ private fun syncLabel(status: String) = when (status) {
 @Composable fun TrackMap(points: List<TrackPoint>, splits: List<KmSplit>, follow: Boolean, modifier: Modifier = Modifier) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val mapView = remember(context) { MapView(context).apply {
+    val online by produceState(false, context) {
+        val connectivity = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { while (true) {
+            value = connectivity.activeNetwork?.let { connectivity.getNetworkCapabilities(it) }
+                ?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+            delay(5000)
+        } }
+    }
+    // SurfaceView synchronously waits for its renderer on resize; this deadlocked the
+    // restored Compose screen offline. TextureView avoids that main-thread rendezvous.
+    val mapView = remember(context) { MapView(context, org.maplibre.android.maps.MapLibreMapOptions().textureMode(true)).apply {
         onCreate(null)
         setOnTouchListener { view, event ->
             view.parent?.requestDisallowInterceptTouchEvent(
@@ -932,6 +1001,14 @@ private fun syncLabel(status: String) = when (status) {
             false
         }
     } }
+    var styleFailed by remember(mapView) { mutableStateOf(false) }
+    var styleMode by remember(mapView) { mutableStateOf<String?>(null) }
+    var styleReadyRevision by remember(mapView) { mutableIntStateOf(0) }
+    DisposableEffect(mapView) {
+        val listener = MapView.OnDidFailLoadingMapListener { styleFailed = true }
+        mapView.addOnDidFailLoadingMapListener(listener)
+        onDispose { mapView.removeOnDidFailLoadingMapListener(listener) }
+    }
     DisposableEffect(mapView, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
@@ -952,7 +1029,7 @@ private fun syncLabel(status: String) = when (status) {
         value = if (follow) null else withContext(Dispatchers.Default) { RouteDisplayBuilder.build(points) }
     }
     var fitRequest by remember(mapView) { mutableIntStateOf(0) }
-    LaunchedEffect(mapView, if (follow) points else route, splits, follow) {
+    LaunchedEffect(mapView, if (follow) points else route, splits, follow, online, styleFailed, styleReadyRevision) {
         if (!follow && route == null) return@LaunchedEffect
         val coords = if (follow) points.map { LatLng(it.latitude, it.longitude) }
         else route?.coordinates.orEmpty().map { LatLng(it.latitude, it.longitude) }
@@ -961,7 +1038,14 @@ private fun syncLabel(status: String) = when (status) {
             map.uiSettings.isScrollGesturesEnabled = true
             val draw = {
                 map.clear()
-                if (coords.size > 1) map.addPolyline(PolylineOptions().addAll(coords).color(android.graphics.Color.rgb(22, 138, 251)).width(6f))
+                val segments = routeSegments(points)
+                val lines = if (segments.size <= 1) listOf(coords) else segments.map { part ->
+                    (if (follow) part.map { se.oxelv.mintracker.data.DisplayCoordinate(it.latitude, it.longitude) }
+                    else RouteDisplayBuilder.build(part)?.coordinates.orEmpty()).map { LatLng(it.latitude, it.longitude) }
+                }
+                lines.filter { it.size > 1 }.forEach { line ->
+                    map.addPolyline(PolylineOptions().addAll(line).color(android.graphics.Color.rgb(22, 138, 251)).width(6f))
+                }
                 splits.forEach { split ->
                     if (split.latitude != null && split.longitude != null)
                         map.addMarker(MarkerOptions().position(LatLng(split.latitude, split.longitude)).title("${split.kilometer} km"))
@@ -971,8 +1055,14 @@ private fun syncLabel(status: String) = when (status) {
                     map.cameraPosition = CameraPosition.Builder().target(coords.last()).zoom(15.0).build()
                 } else route?.let { fitRoute(map, mapView, it) }
             }
-            if (map.style == null) map.setStyle("https://tiles.openfreemap.org/styles/liberty") { draw() }
-            else draw()
+            val desired = if (online && !styleFailed) "remote" else "local"
+            if (styleMode != desired) {
+                styleMode = desired
+                if (desired == "remote") map.setStyle("https://tiles.openfreemap.org/styles/liberty") { styleReadyRevision++ }
+                else map.setStyle(org.maplibre.android.maps.Style.Builder().fromJson(
+                    """{"version":8,"sources":{},"layers":[{"id":"background","type":"background","paint":{"background-color":"#e5eef8"}}]}"""
+                )) { styleReadyRevision++ }
+            } else if (map.style != null) draw()
         }
     }
     LaunchedEffect(fitRequest) {
@@ -980,6 +1070,12 @@ private fun syncLabel(status: String) = when (status) {
     }
     Box(modifier) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize(), update = {})
+        if (!online || styleFailed) Surface(Modifier.align(Alignment.TopStart).padding(8.dp), color = Color.White.copy(alpha = 0.94f), shape = RoundedCornerShape(12.dp)) {
+            Column(Modifier.padding(8.dp)) {
+                Text("${if (!online) "Offlinekarta" else "Kartbakgrunden saknas"} – din GPS-rutt sparas", style = MaterialTheme.typography.labelSmall)
+                if (online && styleFailed) TextButton(onClick = { styleFailed = false }) { Text("Försök ladda kartan") }
+            }
+        }
         if (!follow && route != null) Surface(
             onClick = { fitRequest++ }, modifier = Modifier.align(Alignment.TopEnd).padding(10.dp),
             shape = RoundedCornerShape(18.dp), color = Color.White

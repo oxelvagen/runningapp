@@ -13,13 +13,17 @@ import java.util.UUID
 class ActivityRepository(private val db: TrackerDatabase) {
     /** Room is the first durable write; cloud work is scheduled only after this returns. */
     suspend fun saveLocal(session: Session, userId: String, endedAt: Long, note: String? = null): Long = withContext(Dispatchers.IO) {
-        requireCurrentUser(userId)
+        if (rememberedUserId(supabase.auth.sessionStatus.value) != userId) throw AccountChangedException()
         val savedNote = ActivityNote.normalize(note)
         require(session.ownerUserId == userId) { "Passet tillhör ett annat konto." }
         val kind = ActivityKind.fromStored(session.kind) ?: error("Okänd aktivitetstyp.")
         require(kind.requiresDog == (session.dogId != null)) { "Välj hund för ett hundpass." }
         if (session.dogId != null) require(db.dogDao().byId(session.dogId, userId) != null) { "Hunden tillhör inte ditt konto." }
         db.withTransaction {
+            db.dao().byCloudId(session.sessionId, userId)?.let { existing ->
+                db.activeTrainingDao().delete(session.sessionId, userId)
+                return@withTransaction existing.id
+            }
             val id = db.dao().insert(ActivityEntity(
                 kind = kind.name,
                 startedAt = session.startedAt,
@@ -29,18 +33,19 @@ class ActivityRepository(private val db: TrackerDatabase) {
                 descentM = session.descentM,
                 steps = session.steps,
                 userId = userId,
-                cloudId = UUID.randomUUID().toString(),
+                cloudId = session.sessionId,
                 endedAt = endedAt,
                 syncStatus = SyncStatus.PENDING,
                 dogId = session.dogId,
                 note = savedNote
             ))
             db.dao().insertPoints(session.points.mapIndexed { index, point ->
-                PointEntity(id, index, point.latitude, point.longitude, point.timestamp, point.accuracy, point.altitude)
+                PointEntity(id, index, point.latitude, point.longitude, point.timestamp, point.accuracy, point.altitude, point.segment)
             })
             db.dao().insertSplits(session.splits.map { split ->
                 SplitEntity(id, split.kilometer, split.durationMs, split.latitude, split.longitude)
             })
+            db.activeTrainingDao().delete(session.sessionId, userId)
             id
         }
     }

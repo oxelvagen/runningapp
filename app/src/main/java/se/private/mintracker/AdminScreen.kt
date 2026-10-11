@@ -71,7 +71,7 @@ fun AdminScreen(onBack: () -> Unit) {
         try {
             delay(300)
             if (section == "Dashboard") dashboard = repository.dashboard()
-            else if (section != "Notifications") rows = repository.page(section, page, query, filter)
+            else if (section != "Notifications" && section != "Systemhälsa") rows = repository.page(section, page, query, filter)
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { error = "Data kunde inte hämtas. Försök igen." }
         finally { loading = false }
@@ -85,7 +85,7 @@ fun AdminScreen(onBack: () -> Unit) {
         if (authorized == null) { CircularProgressIndicator(); return@Column }
         if (authorized != true) { Text(error ?: "Åtkomst nekad. Adminbehörighet krävs."); return@Column }
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Dashboard", "Users", "NPC", "Challenges", "Notifications", "System", "Flags", "Logs", "Simulation").forEach { tab ->
+            listOf("Dashboard", "Users", "NPC", "Challenges", "Notifications", "Systemhälsa", "System", "Flags", "Logs", "Simulation").forEach { tab ->
                 FilterChip(section == tab, { section = tab; query = ""; filter = "ALL"; page = 0; detail = null; preview = null; selected = emptySet(); notice = null }, label = { Text(tab) })
             }
         }
@@ -133,6 +133,8 @@ fun AdminScreen(onBack: () -> Unit) {
                 }
                 items(current.entries.toList(), key = { it.key }) { (key, value) -> AdminValue(key, value) }
             }
+        } else if (section == "Systemhälsa") {
+            SystemHealthScreen(repository, reload, Modifier.weight(1f))
         } else if (section == "Notifications") {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Skicka ett systemmeddelande", style = MaterialTheme.typography.titleLarge)

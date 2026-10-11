@@ -1,10 +1,16 @@
 <data-extraction-rules>
     <cloud-backup>
+        <exclude domain="database" path="diagnostics.db" />
+        <exclude domain="file" path="diagnostic-crash.json" />
+        <exclude domain="sharedpref" path="diagnostics.xml" />
         <exclude domain="sharedpref" path="secure_auth.xml" />
         <exclude domain="sharedpref" path="security_choices.xml" />
         <exclude domain="sharedpref" path="se.oxelv.mintracker_preferences.xml" />
     </cloud-backup>
     <device-transfer>
+        <exclude domain="database" path="diagnostics.db" />
+        <exclude domain="file" path="diagnostic-crash.json" />
+        <exclude domain="sharedpref" path="diagnostics.xml" />
         <exclude domain="sharedpref" path="secure_auth.xml" />
         <exclude domain="sharedpref" path="security_choices.xml" />
         <exclude domain="sharedpref" path="se.oxelv.mintracker_preferences.xml" />

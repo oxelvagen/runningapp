@@ -126,10 +126,10 @@ fun SecuritySettings() {
         Text("Säkerhet", style = MaterialTheme.typography.titleMedium)
         if (AppSecurity.supported(context) || enabled) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column(Modifier.weight(1f)) { Text("Biometrisk inloggning"); Text(if (enabled) "På" else "Av", color = AppColors.Muted) }
+                Column(Modifier.weight(1f)) { Text("Kräv fingeravtryck när appen öppnas"); Text(if (enabled) "På" else "Av", color = AppColors.Muted) }
                 Switch(enabled, onCheckedChange = { desired -> scope.launch { AppSecurity.change(context.authActivity(), desired) } }, enabled = !state.busy)
             }
-            Text("Skyddar den sparade sessionen på den här telefonen. Lösenord krävs efter utloggning.", color = AppColors.Muted)
+            Text("Lokalt applås vid ny appstart eller efter en minut i en annan app. Vanlig skärmlåsning och pågående pass kräver ingen ny biometri. Lösenord krävs efter utloggning.", color = AppColors.Muted)
         } else Text("Säker biometri är inte tillgänglig. Lägg till fingeravtryck eller säker ansiktsigenkänning i telefonens inställningar.")
         if (state.busy) CircularProgressIndicator()
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }

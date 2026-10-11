@@ -5,27 +5,42 @@ import io.github.jan.supabase.auth.providers.builtin.Email
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.io.IOException
+import io.github.jan.supabase.auth.Auth
+import io.github.jan.supabase.auth.MemorySessionManager
+import io.github.jan.supabase.auth.user.UserSession
+import io.github.jan.supabase.createSupabaseClient
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class AuthRepository {
-    suspend fun signIn(email: String, password: String) {
-        if (SecureSessions.store.biometricEnabled) AppSecurity.usePassword()
-        supabase.auth.signInWith(Email) {
+    suspend fun signIn(email: String, password: String) = passwordMutex.withLock {
+        if (SecureSessions.store.biometricEnabled) {
+            try {
+                passwordClient.auth.signInWith(Email) { this.email = email.trim(); this.password = password }
+                importVerifiedPassword(checkNotNull(passwordClient.auth.currentSessionOrNull()))
+            } finally { passwordClient.auth.clearSession() }
+        } else supabase.auth.signInWith(Email) {
             this.email = email.trim()
             this.password = password
         }
     }
 
     /** True means Supabase is waiting for email confirmation. */
-    suspend fun signUp(displayName: String, email: String, password: String): Boolean {
-        if (SecureSessions.store.biometricEnabled) AppSecurity.usePassword()
-        supabase.auth.signUpWith(Email, redirectUrl = AuthRedirect.URL) {
+    suspend fun signUp(displayName: String, email: String, password: String): Boolean = passwordMutex.withLock {
+        val isolated = SecureSessions.store.biometricEnabled
+        val client = if (isolated) passwordClient else supabase
+        try {
+        client.auth.signUpWith(Email, redirectUrl = AuthRedirect.URL) {
             this.email = email.trim()
             this.password = password
             data = buildJsonObject { put("display_name", displayName.trim()) }
         }
-        val needsConfirmation = supabase.auth.currentSessionOrNull() == null
+        val session = client.auth.currentSessionOrNull()
+        if (isolated && session != null) importVerifiedPassword(session)
+        val needsConfirmation = session == null
         if (!needsConfirmation) AppSecurity.loggedOut()
-        return needsConfirmation
+        needsConfirmation
+        } finally { if (isolated) passwordClient.auth.clearSession() }
     }
 
     suspend fun resetPassword(email: String) = supabase.auth.resetPasswordForEmail(email.trim(), redirectUrl = AuthRedirect.URL)
@@ -33,6 +48,18 @@ class AuthRepository {
     suspend fun signOut() {
         try { supabase.auth.signOut() }
         finally { supabase.auth.clearSession(); AppSecurity.loggedOut() }
+    }
+    private suspend fun importVerifiedPassword(session: UserSession) {
+        supabase.auth.awaitInitialization()
+        supabase.auth.stopAutoRefreshForCurrentSession()
+        SecureSessions.store.replaceAfterVerifiedPassword(session)
+        supabase.auth.importSession(session, autoRefresh = true)
+    }
+    companion object {
+        private val passwordMutex = Mutex()
+        private val passwordClient by lazy { createSupabaseClient(SUPABASE_PROJECT_URL, SUPABASE_PUBLISHABLE_KEY) {
+            install(Auth) { autoLoadFromStorage = false; autoSaveToStorage = false; alwaysAutoRefresh = false; sessionManager = MemorySessionManager() }
+        } }
     }
 }
 

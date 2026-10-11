@@ -43,9 +43,11 @@ object MapExportRenderer {
                             val bitmap = snapshot.bitmap.copy(Bitmap.Config.ARGB_8888, true)
                                 ?: error("Kartbilden kunde inte kopieras.")
                             val path = Path()
-                            route.coordinates.forEachIndexed { index, coordinate ->
+                            se.oxelv.mintracker.tracking.routeSegments(points).forEach { part ->
+                              RouteDisplayBuilder.build(part)?.coordinates.orEmpty().forEachIndexed { index, coordinate ->
                                 val pixel = snapshot.pixelForLatLng(LatLng(coordinate.latitude, coordinate.longitude))
                                 if (index == 0) path.moveTo(pixel.x, pixel.y) else path.lineTo(pixel.x, pixel.y)
+                              }
                             }
                             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                                 color = Color.rgb(22, 138, 251)

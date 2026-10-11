@@ -117,6 +117,7 @@ fun ActiveActivityScreen(session: Session, dogName: String?, onPause: () -> Unit
         Text(listOfNotNull(ActivityKind.label(session.kind), dogName).joinToString(" · "), style = MaterialTheme.typography.titleMedium)
         Text(elapsed(session.activeMs), fontSize = 52.sp, fontWeight = FontWeight.Bold, color = AppColors.Navy, maxLines = 1)
         Text(if (session.paused) "PAUSAD" else "TID", style = MaterialTheme.typography.labelLarge, color = AppColors.Muted)
+        session.recordingError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             StatValue(km(session.distanceM), "Distans")
             StatValue(if (session.running) if (session.currentPaceSeconds > 0) elapsed(session.currentPaceSeconds * 1000L) else "--:--" else paceLabel(session.activeMs, session.distanceM), "Tempo /km")
@@ -130,7 +131,10 @@ fun ActiveActivityScreen(session: Session, dogName: String?, onPause: () -> Unit
         if (session.paused) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(onClick = onResume, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) { Icon(Icons.Outlined.PlayArrow, null); Text("Fortsätt") }
             OutlinedButton(onClick = onStop, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) { Text("Avsluta") }
-        } else PrimaryActionButton("PAUSA", icon = Icons.Outlined.Pause, onClick = onPause)
+        } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button(onClick = onPause, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) { Icon(Icons.Outlined.Pause, null); Text("Pausa") }
+            OutlinedButton(onClick = onStop, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) { Text("Avsluta") }
+        }
     }
 }
 

@@ -46,7 +46,7 @@ class AdminRepository {
         check(response.status.isSuccess()) { "Åtgärden kunde inte slutföras (${response.status.value})." }
         return json.parseToJsonElement(response.bodyAsText())
     }
-    private suspend fun rpc(name: String, params: JsonObject = buildJsonObject {}): JsonElement {
+    internal suspend fun rpc(name: String, params: JsonObject = buildJsonObject {}): JsonElement {
         val actor = supabase.auth.currentUserOrNull()?.id
         val result = supabase.postgrest.rpc(name, params).data
         check(supabase.auth.currentUserOrNull()?.id == actor) { "Kontot har ändrats." }

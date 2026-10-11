@@ -22,6 +22,7 @@ try {
     Remove-Item -LiteralPath $temporary
     Phase login
     Phase restore
+    Phase invalid_password
     Phase expire
     Phase restore
     Phase expire

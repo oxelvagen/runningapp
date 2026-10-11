@@ -31,6 +31,15 @@ import java.util.Locale
 @Composable
 fun ProfileScreen(profile: Profile?, email: String, activities: List<ActivityEntity>, loading: Boolean, error: String?, onBack: () -> Unit, onSettings: () -> Unit, onDogs: () -> Unit, onRetry: () -> Unit, onSave: (String, String, String, Boolean) -> Unit, onSaveAvatar: (Uri) -> Unit, onRemoveAvatar: () -> Unit, isAdmin: Boolean = false, onAdmin: () -> Unit = {}, onNotifications: () -> Unit = {}) {
     var chosenPhoto by remember(profile?.id) { mutableStateOf<Uri?>(null) }
+    var showDiagnostics by remember { mutableStateOf(false) }
+    var diagnosticsEnabled by remember { mutableStateOf(se.oxelv.mintracker.data.Diagnostics.enabled) }
+    if (showDiagnostics) AlertDialog(onDismissRequest = { showDiagnostics = false }, title = { Text("Teknisk diagnostik") }, text = {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Rapporter hjälper oss att hitta fel. De kan innehålla app- och Android-version, telefonmodell, anonymt installations-ID, kontoanknytning och sanerade klass-/metodnamn. Lösenord, tokens, GPS-rutter, privata anteckningar och bildinnehåll skickas aldrig. Endast behörig administration kan läsa rapporterna. Rårapporter sparas högst 30 dagar.")
+            Text("Avstängning rensar detta kontos väntande lokala rapporter. Redan mottagna rapporter gallras automatiskt; kontoradering tar bort kontots rårapporter.")
+            Row { Switch(diagnosticsEnabled, { diagnosticsEnabled = it; se.oxelv.mintracker.data.Diagnostics.setEnabled(it) }); Text("Skicka teknisk diagnostik") }
+        }
+    }, confirmButton = { TextButton(onClick = { showDiagnostics = false }) { Text("Stäng") } })
     var confirmRemoveAvatar by remember(profile?.id) { mutableStateOf(false) }
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { chosenPhoto = it }
     var name by remember(profile?.id) { mutableStateOf(profile?.displayName.orEmpty()) }
@@ -54,6 +63,7 @@ fun ProfileScreen(profile: Profile?, email: String, activities: List<ActivityEnt
         }
         if (loading && profile == null) CircularProgressIndicator()
         TextButton(onClick = onNotifications) { Text("Notiser") }
+        TextButton(onClick = { showDiagnostics = true }) { Text("Integritet och diagnostik") }
         if (isAdmin) Button(onClick = onAdmin) { Text("Admin") }
         profile?.let {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {

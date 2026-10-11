@@ -26,7 +26,8 @@ class ActivitySyncWorker(context: Context, params: WorkerParameters) : Coroutine
             Result.success()
         } catch (_: AccountChangedException) {
             Result.failure()
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            Diagnostics.report(DiagnosticCode.SYNC_FAILED, error)
             Result.retry()
         }
     }

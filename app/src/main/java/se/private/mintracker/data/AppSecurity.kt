@@ -34,19 +34,12 @@ object AppSecurity {
         preferences(context).edit().putBoolean("asked:$userId", true).apply()
         mutable.value = mutable.value.copy(offerFor = null)
     }
-    fun stopped() { stoppedAt = SystemClock.elapsedRealtime() }
+    fun stopped(screenLocked: Boolean = false) { stoppedAt = if (screenLocked) null else SystemClock.elapsedRealtime() }
     fun resumed(trainingInProgress: Boolean) {
         val elapsed = stoppedAt?.let { SystemClock.elapsedRealtime() - it } ?: 0L
         stoppedAt = null
         if (elapsed >= 60_000 && SecureSessions.store.biometricEnabled && !trainingInProgress)
             mutable.value = mutable.value.copy(locked = true, offerFor = null)
-    }
-    suspend fun usePassword() {
-        supabase.auth.awaitInitialization()
-        supabase.auth.clearSession()
-        // Keep the login form mounted until the password request finishes.
-        // Removing a Compose host here would cancel its in-flight sign-in coroutine.
-        mutable.value = mutable.value.copy(offerFor = null, revision = mutable.value.revision + 1)
     }
     fun loggedOut() { mutable.value = SecurityState() }
 
@@ -90,7 +83,8 @@ object AppSecurity {
         } catch (_: PromptCancelled) {
             mutable.value = mutable.value.copy(error = "Biometrin avbröts eller är inte tillgänglig. Du kan använda lösenord.")
         } catch (error: CancellationException) { throw error
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            Diagnostics.report(DiagnosticCode.AUTH_UNLOCK_FAILED, error)
             mutable.value = mutable.value.copy(error = "Säkerhetsinställningen kunde inte ändras. Logga in med lösenord och försök igen.")
         } finally { mutable.value = mutable.value.copy(busy = false) }
     }
@@ -99,28 +93,26 @@ object AppSecurity {
         if (mutable.value.busy) return
         mutable.value = mutable.value.copy(busy = true, error = null)
         val store = SecureSessions.store
-        var decrypted = false
         try {
             check(supported(activity))
             val owner = checkNotNull(store.owner)
             val session = store.unlock(authenticate(activity, store.unlockCipher()), owner)
-            decrypted = true
             supabase.auth.awaitInitialization()
-            supabase.auth.importSession(session, autoRefresh = false)
-            // A local CryptoObject never bypasses server revocation or expiration.
-            supabase.auth.refreshCurrentSession()
-            check(supabase.auth.retrieveUserForCurrentSession().id == owner)
+            if (supabase.auth.currentSessionOrNull()?.user?.id != owner) {
+                supabase.auth.importSession(session, autoRefresh = false)
+                supabase.auth.startAutoRefreshForCurrentSession()
+            }
+            // Local unlock requires no network. The SDK alone owns refresh/rotation;
+            // server requests still use JWT/RLS, and definitive revocation clears Auth.
             check(store.owner == owner)
-            supabase.auth.startAutoRefreshForCurrentSession()
             mutable.value = SecurityState()
         } catch (_: PromptCancelled) {
             mutable.value = mutable.value.copy(error = "Biometrin avbröts. Du kan logga in med lösenord.")
         } catch (error: CancellationException) { throw error
-        } catch (_: Exception) {
-            // Invalidated keys and rejected refresh tokens require ordinary login.
-            // Keep no imported Auth session alive after a failed server check.
-            if (decrypted || !supported(activity)) supabase.auth.clearSession() else store.clear()
-            mutable.value = SecurityState(error = "Snabb inloggning kunde inte användas. Logga in med e-post och lösenord.")
+        } catch (error: Exception) {
+            Diagnostics.report(DiagnosticCode.AUTH_UNLOCK_FAILED, error)
+            // Prompt/import failures never erase a token; explicit password login remains available.
+            mutable.value = mutable.value.copy(error = "Applåset kunde inte öppnas. Försök igen eller använd lösenord.")
         } finally { mutable.value = mutable.value.copy(busy = false) }
     }
 }

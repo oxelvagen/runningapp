@@ -16,6 +16,22 @@ import java.util.UUID
 @RunWith(AndroidJUnit4::class)
 @OptIn(kotlin.time.ExperimentalTime::class)
 class SecureSessionDeviceTest {
+    @Test fun verifiedPasswordReplacementIsAtomicAndInvalidReplacementKeepsOldSession() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "password-replace-${java.util.UUID.randomUUID()}"
+        val manager = SecureSessionManager(context, name, false)
+        try {
+            manager.saveSession(session("A"))
+            try { manager.replaceAfterVerifiedPassword(session("A").copy(user = null)); fail("Ownerless session must fail") }
+            catch (_: IllegalArgumentException) { }
+            assertEquals("A", manager.loadSession()?.user?.id)
+            manager.replaceAfterVerifiedPassword(session("B", "verified-token"))
+            val reopened = SecureSessionManager(context, name, false)
+            assertEquals("B", reopened.loadSession()?.user?.id)
+            assertEquals("verified-token", reopened.loadSession()?.accessToken)
+            assertFalse(reopened.biometricEnabled)
+        } finally { manager.clear() }
+    }
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private fun session(owner: String, token: String = "test-access-token") = UserSession(
         accessToken = token, refreshToken = "test-refresh-token", tokenType = "bearer", expiresIn = 3600,

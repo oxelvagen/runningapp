@@ -21,6 +21,7 @@ class MinTrackerApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         SecureSessions.initialize(this)
+        runCatching { Diagnostics.initialize(this) }
     }
 }
 
@@ -102,6 +103,22 @@ class SecureSessionManager(context: Context, private val storageName: String = "
         }
     }
     override suspend fun saveSession(session: UserSession) { write(session) }
+    /** Called only after a separate password request succeeds. A bad password never
+     * destroys the currently encrypted session. Keep biometric wrapping when unlocked. */
+    @Synchronized fun replaceAfterVerifiedPassword(session: UserSession) {
+        val userId = requireNotNull(session.user?.id)
+        if (owner == userId && dataKey != null) { write(session); return }
+        val freshKey = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey().encoded
+        val wrapper = encryptCipher(key(false))
+        val encrypted = encryptCipher(SecretKeySpec(freshKey, "AES"))
+        val payload = encrypted.doFinal(json.encodeToString(UserSession.serializer(), session).toByteArray(Charsets.UTF_8))
+        val wrapped = wrapper.doFinal(freshKey)
+        check(prefs.edit().clear().putString("session", encode(payload)).putString("iv", encode(encrypted.iv))
+            .putString("owner", userId).putString("wrapped", encode(wrapped)).putString("wrap_iv", encode(wrapper.iv))
+            .putBoolean("biometric", false).putBoolean("migrated", true).commit()) { "Could not persist verified session" }
+        dataKey?.fill(0); dataKey = freshKey
+        runCatching { keyStore.deleteEntry(biometricAlias) }
+    }
     /** Local access during a retryable refresh failure requires a decryptable session. */
     fun offlineOwner(): String? = try { read()?.user?.id } catch (_: Exception) { clear(); null }
     override suspend fun loadSession(): UserSession? {

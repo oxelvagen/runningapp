@@ -77,6 +77,7 @@ private fun AvatarImage(ownerId: String, name: String, path: String?, legacyUrl:
                 .build()
         }
         SubcomposeAsyncImage(model = request, contentDescription = "Bild för $name",
+            onError = { se.oxelv.mintracker.data.Diagnostics.report(se.oxelv.mintracker.data.DiagnosticCode.IMAGE_LOAD_FAILED, it.result.throwable) },
             modifier = Modifier.size(size).clip(CircleShape), contentScale = ContentScale.Crop,
             loading = { fallback() }, error = { fallback() })
     }

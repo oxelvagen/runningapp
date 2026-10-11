@@ -93,6 +93,7 @@ fun socialFeedError(error: Exception): String {
                                     val result = repository.cheer(event.id, !event.cheeredByMe)
                                     if (generation == requestGeneration) events = events.map { if (it.id == event.id) it.copy(cheerCount = result.count, cheeredByMe = result.mine) else it }
                                 } catch (e: Exception) {
+                                    se.oxelv.mintracker.data.Diagnostics.report(se.oxelv.mintracker.data.DiagnosticCode.CHEER_FAILED, e)
                                     error = socialFeedError(e)
                                     events = emptyList(); cursor = null
                                 } finally { cheering = cheering - event.id }
