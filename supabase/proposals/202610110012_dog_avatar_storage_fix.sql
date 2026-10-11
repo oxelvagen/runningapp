@@ -60,3 +60,5 @@ using (
 );
 
 commit;
+-- Explicitly approved by the user and applied on 2026-10-11.
+-- LiveDogAvatarDeviceTest passed against the repaired backend after application.

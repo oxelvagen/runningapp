@@ -33,7 +33,7 @@ Uppladdning via både riktig Android `AvatarRepository.saveDog` och Storage-REST
 
 SQL finns i `C:/Users/oxelv/Downloads/löpning/supabase/proposals/202610110012_dog_avatar_storage_fix.sql`. Den ändrar fyra befintliga policies för privata hundbilder, behåller ägarkontroll och rör inte tabeller, buckets, publika läsrättigheter eller den separata kontospärren. Lokala Postgres/RLS-tester täcker reproduktion, egen upload/read/update/delete, konto-isolering, felaktiga sökvägar och fel bucket.
 
-**Backendstatus:** kräver uttryckligt godkännande före körning. Efter godkännandet ska det riktiga Android-testet verifiera val av PNG, JPEG-konvertering, uppladdning, Room-referens, signerad bildhämtning/avkodning och borttagning. En ny APK ensam kan inte reparera en felaktig serverpolicy.
+**Backendstatus:** användaren godkände de fyra policyändringarna den 11 oktober 2026 och SQL-korrigeringen har installerats i Supabase. Det separata Android-testet `LiveDogAvatarDeviceTest.chosenImageIsSavedAndDisplayedForOwnedDog` passerar nu mot den riktiga backendmiljön: PNG, JPEG-konvertering, uppladdning, Room-referens, signerad bildhämtning/avkodning och borttagning. Samma test misslyckades före korrigeringen. Logg: `C:/Users/oxelv/Downloads/löpning/tmp/dog-avatar-android-green.log`.
 
 ## LocationRequest och Android
 
@@ -79,7 +79,7 @@ flowchart TD
 
 ## Testresultat
 
-Slutligt releasebygge: BUILD SUCCESSFUL (2 min 55 s). **86 JVM-tester godkända; 61 Android-testfall: 55 godkända, 6 överhoppade, 0 fel.** Lint: 0 fel, 58 varningar. Slutlig bygglogg: C:/Users/oxelv/Downloads/löpning/tmp/gps-final-release-validation.log. Separat processprov godkänt: paketersättning med bevarad inloggning, SIGKILL, Force stop, återställning och exakt en lokal sparning. Logg: tmp/gps-final-process-recovery.log. Sex lokala RLS-regressionsgrupper för hundbilder godkända. Det skarpa Android-hundbildstestet är fortfarande rött innan godkänd serverkorrigering.
+Slutligt releasebygge: BUILD SUCCESSFUL (2 min 55 s). **86 JVM-tester godkända; 61 Android-testfall: 55 godkända, 6 överhoppade, 0 fel.** Lint: 0 fel, 58 varningar. Slutlig bygglogg: C:/Users/oxelv/Downloads/löpning/tmp/gps-final-release-validation.log. Separat processprov godkänt: paketersättning med bevarad inloggning, SIGKILL, Force stop, återställning och exakt en lokal sparning. Logg: tmp/gps-final-process-recovery.log. Sex lokala RLS-regressionsgrupper för hundbilder godkända. Det separata skarpa Android-hundbildstestet passerar efter den godkända serverkorrigeringen (1 test, 0 fel).
 
 Kommandon:
 ```powershell
