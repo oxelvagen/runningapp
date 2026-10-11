@@ -146,6 +146,7 @@ fun SessionResultScreen(session: Session, dogName: String?, saving: Boolean, err
         Text("Bra jobbat!", style = MaterialTheme.typography.headlineSmall)
         dogName?.let { Text("Tillsammans med $it", color = AppColors.Muted) }
         Text("Du har genomfört ett nytt pass.", color = AppColors.Muted)
+        session.recordingError?.let { ErrorState(it) }
         TrackMap(session.points, session.splits, false, Modifier.fillMaxWidth().height(230.dp).clip(RoundedCornerShape(20.dp)))
         AppCard(Modifier.fillMaxWidth()) { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             StatValue(km(session.distanceM), "Distans")

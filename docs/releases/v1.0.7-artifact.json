@@ -1,0 +1,10 @@
+{
+  "package": "se.oxelv.mintracker",
+  "bytes": 68631021,
+  "sha256": "0b6a8b3e330ea44a45b76ff5e4338ed4912f319d047cda439ea60a92d9ad8c43",
+  "minimum_version_code": 1,
+  "version_name": "1.0.7",
+  "apk": "MinTracker-v1.0.7.apk",
+  "certificate_sha256": "5153574877e79da8d415e4b365a5428d838b74c9a93b36072ac94795300bc4e4",
+  "version_code": 8
+}
